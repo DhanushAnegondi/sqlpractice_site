@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useProblems } from "@/hooks/useProblems";
+import { useLocalProblems } from "@/hooks/useLocalPractice";
 import type { ProblemListItem } from "@/types/api";
 
 const DIFFICULTY_COLORS: Record<string, string> = {
@@ -60,7 +60,14 @@ export function ProblemsPageClient() {
   if (searchParams.get("mode")) filters.mode = searchParams.get("mode")!;
   if (searchParams.get("search")) filters.search = searchParams.get("search")!;
 
-  const { data, isLoading, error } = useProblems(filters);
+  const { data, isLoading } = useLocalProblems();
+
+  const filteredItems = (data ?? []).filter((problem) => {
+    if (filters.difficulty && problem.difficulty !== filters.difficulty) return false;
+    if (filters.mode && problem.mode !== filters.mode) return false;
+    if (filters.search && !problem.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    return true;
+  });
 
   function setFilter(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -74,7 +81,7 @@ export function ProblemsPageClient() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-1">Problems</h1>
         <p className="text-muted-foreground text-sm">
-          {data?.total ?? 0} problems available
+          {filteredItems.length} problems available
         </p>
       </div>
 
@@ -120,18 +127,12 @@ export function ProblemsPageClient() {
         </div>
       )}
 
-      {error && (
-        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          Failed to load problems. Make sure the backend is running.
-        </div>
-      )}
-
       {data && (
         <div className="space-y-3">
-          {data.items.map((problem) => (
+          {filteredItems.map((problem) => (
             <ProblemCard key={problem.id} problem={problem} />
           ))}
-          {data.items.length === 0 && (
+          {filteredItems.length === 0 && (
             <p className="text-center text-muted-foreground py-12">No problems match your filters.</p>
           )}
         </div>

@@ -1,10 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { useAuth } from "@/lib/auth";
-import { useProgress, useSubmissions } from "@/hooks/useProblems";
+import { useLocalProgress, useLocalSubmissions } from "@/hooks/useLocalPractice";
 
 const STATUS_STYLES: Record<string, string> = {
   accepted: "bg-emerald-100 text-emerald-800",
@@ -22,32 +19,8 @@ function formatDate(value: string | null) {
 }
 
 export default function ProfilePage() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
-  const isAuthed = Boolean(user);
-  const progressQuery = useProgress(isAuthed);
-  const submissionsQuery = useSubmissions(isAuthed);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/login");
-    }
-  }, [loading, router, user]);
-
-  if (loading || !user) {
-    return (
-      <div className="mx-auto max-w-6xl px-4 py-8">
-        <div className="space-y-4 animate-pulse">
-          <div className="h-10 w-64 rounded bg-muted" />
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="h-32 rounded-lg bg-muted" />
-            <div className="h-32 rounded-lg bg-muted" />
-            <div className="h-32 rounded-lg bg-muted" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const progressQuery = useLocalProgress();
+  const submissionsQuery = useLocalSubmissions();
 
   const progress = progressQuery.data ?? [];
   const submissions = submissionsQuery.data ?? [];
@@ -62,9 +35,9 @@ export default function ProfilePage() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">Profile</p>
-          <h1 className="text-3xl font-semibold">{user.name}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{user.email}</p>
+          <p className="text-sm text-muted-foreground">Local profile</p>
+          <h1 className="text-3xl font-semibold">Your practice data</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Stored in your browser with IndexedDB.</p>
         </div>
         <Link
           href="/problems"
@@ -83,12 +56,12 @@ export default function ProfilePage() {
         <section className="rounded-xl border bg-card p-5">
           <p className="text-sm text-muted-foreground">Recent submissions</p>
           <p className="mt-3 text-4xl font-semibold">{submissions.length}</p>
-          <p className="mt-2 text-sm text-muted-foreground">Latest 20 attempts from your account</p>
+          <p className="mt-2 text-sm text-muted-foreground">Latest 20 attempts from this browser</p>
         </section>
         <section className="rounded-xl border bg-card p-5">
-          <p className="text-sm text-muted-foreground">Plan</p>
-          <p className="mt-3 text-lg font-medium capitalize">{user.subscription_tier}</p>
-          <p className="mt-2 text-sm text-muted-foreground">Upgrade later when premium drills exist.</p>
+          <p className="text-sm text-muted-foreground">Architecture</p>
+          <p className="mt-3 text-lg font-medium">Local-first MVP</p>
+          <p className="mt-2 text-sm text-muted-foreground">DuckDB WASM + IndexedDB, no backend required.</p>
         </section>
       </div>
 

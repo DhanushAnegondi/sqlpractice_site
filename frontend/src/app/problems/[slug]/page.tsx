@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useProblem, useRun, useSubmit } from "@/hooks/useProblems";
+import { useQueryClient } from "@tanstack/react-query";
+import { useLocalDraft, useLocalProblem } from "@/hooks/useLocalPractice";
 import { SqlEditor } from "@/components/editor/SqlEditor";
 import { ResultsPane } from "@/components/editor/ResultsPane";
 import { SchemaViewer } from "@/components/problems/SchemaViewer";
 import type { RunResult, SubmitResult } from "@/types/api";
-import { useAuth } from "@/lib/auth";
 import Link from "next/link";
+import { runLocalQuery, submitLocalQuery } from "@/lib/local/engine";
+import { saveDraft, recordLocalSubmission } from "@/lib/local/storage";
 
 const DIFFICULTY_COLORS: Record<string, string> = {
   easy: "bg-green-100 text-green-800",
@@ -40,30 +42,55 @@ function DescriptionPanel({ description }: { description: string }) {
 export default function ProblemPage() {
   const params = useParams();
   const slug = params.slug as string;
-  const { user, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
 
-  const { data: problem, isLoading, error } = useProblem(slug);
-  const runMutation = useRun(slug);
-  const submitMutation = useSubmit(slug);
+  const { data: problem, isLoading, error } = useLocalProblem(slug);
+  const { data: draft } = useLocalDraft(slug);
 
   const [sql, setSql] = useState("-- Write your SQL query here\n\n");
   const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitResult | null>(null);
   const [resultMode, setResultMode] = useState<"run" | "submit" | null>(null);
   const [activeTab, setActiveTab] = useState<"problem" | "schema">("problem");
+  const [running, setRunning] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!problem) return;
+    setSql(draft?.sql ?? problem.starter_sql);
+  }, [draft?.sql, problem]);
+
+  useEffect(() => {
+    if (!slug) return;
+    const timer = window.setTimeout(() => {
+      void saveDraft(slug, sql);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [slug, sql]);
 
   async function handleRun() {
+    if (!problem) return;
+    setRunning(true);
     setResultMode("run");
     setRunResult(null);
-    const result = await runMutation.mutateAsync(sql);
+    const result = await runLocalQuery(problem, sql);
     setRunResult(result);
+    setRunning(false);
   }
 
   async function handleSubmit() {
+    if (!problem) return;
+    setSubmitting(true);
     setResultMode("submit");
     setSubmitResult(null);
-    const result = await submitMutation.mutateAsync(sql);
+    const { result, submission } = await submitLocalQuery(problem, sql);
+    await recordLocalSubmission(submission);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["local-progress"] }),
+      queryClient.invalidateQueries({ queryKey: ["local-submissions"] }),
+    ]);
     setSubmitResult(result);
+    setSubmitting(false);
   }
 
   if (isLoading) {
@@ -153,30 +180,23 @@ export default function ProblemPage() {
 
           {/* Toolbar */}
           <div className="flex items-center gap-3">
-            {authLoading ? (
-              <p className="text-sm text-muted-foreground">Checking session...</p>
-            ) : !user ? (
-              <p className="text-sm text-muted-foreground">
-                <Link href="/login" className="text-primary hover:underline">Sign in</Link> to run and submit queries.
-              </p>
-            ) : (
-              <>
-                <button
-                  onClick={handleRun}
-                  disabled={runMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 transition-colors"
-                >
-                  {runMutation.isPending ? "Running..." : "Run"}
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={submitMutation.isPending}
-                  className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  {submitMutation.isPending ? "Submitting..." : "Submit"}
-                </button>
-              </>
-            )}
+            <button
+              onClick={handleRun}
+              disabled={running}
+              className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent disabled:opacity-50 transition-colors"
+            >
+              {running ? "Running..." : "Run"}
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {submitting ? "Submitting..." : "Submit"}
+            </button>
+            <p className="text-xs text-muted-foreground">
+              Local-first mode: queries run in your browser and drafts are saved locally.
+            </p>
           </div>
 
           {/* Results */}
